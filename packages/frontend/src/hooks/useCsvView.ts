@@ -37,11 +37,21 @@ export function useCsvView({ apiBase }: UseCsvViewOptions) {
 
       if (!response.ok) {
         let message = "Upload fehlgeschlagen.";
-        try {
-          const payload = await response.json();
-          message = payload.message || payload.error || message;
-        } catch {
-          message = await response.text();
+        const contentType = response.headers.get("content-type");
+        if (contentType?.includes("application/json")) {
+          try {
+            const payload = await response.json();
+            message = payload.message || payload.error || message;
+          } catch {
+            // Fallback if JSON parsing fails
+          }
+        } else {
+          try {
+            const text = await response.text();
+            if (text) message = text;
+          } catch {
+            // Ignore
+          }
         }
         throw new Error(message);
       }
