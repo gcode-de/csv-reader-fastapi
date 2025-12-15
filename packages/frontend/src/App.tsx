@@ -37,7 +37,6 @@ function App() {
     setPageSize,
     filteredRows,
     uploadFile,
-    parseLocalFile,
     setError,
   } = useCsvView({ apiBase: API_BASE });
 
@@ -67,14 +66,6 @@ function App() {
     uploadFile(selectedFile);
   };
 
-  const handleLocalPreview = async () => {
-    if (!selectedFile) {
-      setError("Bitte wähle eine CSV-Datei aus.");
-      return;
-    }
-    parseLocalFile(selectedFile);
-  };
-
   return (
     <div className={darkMode ? "dark min-h-screen bg-slate-950" : "min-h-screen bg-slate-50"}>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-8">
@@ -82,7 +73,9 @@ function App() {
           <div>
             <p className="text-xs uppercase tracking-[0.2em] text-slate-500">CSV Viewer</p>
             <h1 className="text-3xl font-semibold leading-tight text-slate-900 dark:text-slate-50">Upload & Vorschau</h1>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">Sende eine CSV an das Backend, prüfe Daten, zeige Vorschau.</p>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+              Lade eine CSV hoch und erkunde die Daten mit Suche, Filterung und Sortierung.
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={handleDarkModeToggle} aria-label="Dark-Mode umschalten">
@@ -129,9 +122,6 @@ function App() {
               {selectedFile && <p className="text-sm text-slate-600 dark:text-slate-300">Gewählt: {selectedFile.name}</p>}
 
               <div className="flex flex-wrap gap-2 justify-end">
-                <Button type="button" variant="secondary" onClick={handleLocalPreview} disabled={!selectedFile || loading}>
-                  Im Browser prüfen
-                </Button>
                 <Button type="submit" disabled={!selectedFile || loading} className="w-full md:w-auto">
                   {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Upload className="mr-2 size-4" />}
                   CSV an Backend senden
@@ -156,12 +146,10 @@ function App() {
                     <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                       {preview.filename ?? "unbekannt"}
                     </span>
-                    <span>Quelle: {preview.source === "backend" ? "Backend" : preview.source === "sample" ? "Demo-Datei" : "Browser"}</span>
-                    <span>Delimiter: {preview.delimiter}</span>
                     <span>
-                      Zeilen: {preview.rows.length} gültig / {preview.totalRows} gesamt
+                      Gültige Zeilen: {preview.totalRows - preview.invalidRows} / {preview.totalRows} gesamt
                     </span>
-                    <span>Ungültige Zeilen: {preview.invalidRows}</span>
+                    {preview.invalidRows > 0 && <span>Ungültige Zeilen: {preview.invalidRows}</span>}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3">
@@ -293,7 +281,7 @@ function App() {
                   {preview.errors?.length ? (
                     <Alert>
                       <Info className="text-slate-500" />
-                      <AlertTitle>Backend-Hinweise</AlertTitle>
+                      <AlertTitle>Gefundene Fehler:</AlertTitle>
                       <AlertDescription>
                         <ul className="list-disc space-y-1 pl-4">
                           {preview.errors.map((msg: string, idx: number) => (

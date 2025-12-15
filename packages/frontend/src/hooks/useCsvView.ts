@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { parseCsvText } from "@/lib/csv";
 import type { CsvPreview, UploadResponse } from "@/types";
 
 export type UseCsvViewOptions = {
@@ -12,15 +11,25 @@ export function useCsvView({ apiBase }: UseCsvViewOptions) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [columnFilter, setColumnFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [csvId, setCsvId] = useState<string | null>(null);
+  const [serverTotalRows, setServerTotalRows] = useState(0);
 
+  // Seite wird immer auf 1 gesetzt, wenn Preview sich ändert
   useEffect(() => {
     setPage(1);
   }, [preview]);
+
+  // Debounce search input to reduce API calls
+  useEffect(() => {
+    const handle = setTimeout(() => setDebouncedSearchTerm(searchTerm), 300);
+    return () => clearTimeout(handle);
+  }, [searchTerm]);
 
   const uploadFile = async (file: File) => {
     setLoading(true);
@@ -58,16 +67,22 @@ export function useCsvView({ apiBase }: UseCsvViewOptions) {
 
       const payload: UploadResponse = await response.json();
 
+      // Store ID for remote pagination
+      setCsvId(payload.id ?? "");
+      setServerTotalRows(payload.totalRows ?? 0);
+      // Set preview with filename and metadata
       setPreview({
         columns: payload.columns ?? [],
         rows: payload.rows ?? [],
-        totalRows: payload.totalRows ?? payload.rows?.length ?? 0,
-        invalidRows: payload.invalidRows ?? payload.errors?.length ?? 0,
+        totalRows: payload.totalRows ?? 0,
+        invalidRows: payload.invalidRows ?? 0,
         delimiter: payload.delimiter ?? ";",
         filename: file.name,
         source: "backend",
         errors: payload.errors,
       });
+      // Fetch first page
+      await fetchPage(payload.id ?? "", 1, pageSize);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unbekannter Fehler.";
       setError(`${message} (Backend unter ${apiBase} erreichbar?)`);
@@ -76,78 +91,74 @@ export function useCsvView({ apiBase }: UseCsvViewOptions) {
     }
   };
 
-  const parseLocalFile = async (file: File) => {
+  const fetchPage = async (id: string, pageNum: number, size: number) => {
     setLoading(true);
     setError(null);
+
     try {
-      const text = await file.text();
-      const parsed = parseCsvText(text);
-      setPreview({ ...parsed, source: "client", filename: file.name });
+      const params = new URLSearchParams({
+        page: String(pageNum),
+        pageSize: String(size),
+      });
+      if (sortBy) {
+        params.set("sortBy", sortBy);
+        params.set("sortDirection", sortDirection);
+      }
+      const effectiveSearch = debouncedSearchTerm.trim();
+      if (effectiveSearch) {
+        params.set("search", effectiveSearch);
+        params.set("searchColumn", columnFilter);
+      }
+
+      const response = await fetch(`${apiBase}/data/${id}?${params}`);
+
+      if (!response.ok) {
+        throw new Error("Fehler beim Laden der Daten.");
+      }
+
+      const payload = await response.json();
+
+      setPreview((prev) => ({
+        columns: payload.columns ?? [],
+        rows: payload.rows ?? [],
+        // Preserve Gesamtsumme aus dem Upload (prev oder serverTotalRows), nicht den gefilterten Wert aus payload
+        totalRows: prev?.totalRows ?? serverTotalRows,
+        invalidRows: prev?.invalidRows ?? 0,
+        delimiter: prev?.delimiter ?? ";",
+        filename: prev?.filename ?? "unbekannt",
+        source: "backend",
+        errors: prev?.errors ?? [],
+      }));
+      setServerTotalRows(payload.totalRows ?? serverTotalRows);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Konnte Datei nicht lesen.";
+      const message = err instanceof Error ? err.message : "Fehler beim Laden.";
       setError(message);
     } finally {
       setLoading(false);
     }
   };
 
+  // Watch for page/sort/search changes in remote mode
+  useEffect(() => {
+    if (csvId) {
+      fetchPage(csvId, page, pageSize);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, pageSize, sortBy, sortDirection, debouncedSearchTerm, columnFilter]);
+
   const filteredRows = useMemo(() => {
     if (!preview) return [];
-    const term = searchTerm.trim().toLowerCase();
-    const targetIndex = columnFilter === "all" ? -1 : preview.columns.indexOf(columnFilter);
+    // Filtering is done server-side, so just return the rows as-is
+    return preview.rows ?? [];
+  }, [preview]);
 
-    return preview.rows.filter((row) => {
-      if (!term) return true;
-      if (targetIndex >= 0) {
-        const cell = row[targetIndex] ?? "";
-        return cell.toLowerCase().includes(term);
-      }
-      return row.some((cell) => (cell ?? "").toLowerCase().includes(term));
-    });
-  }, [columnFilter, preview, searchTerm]);
-
-  const sortedRows = useMemo(() => {
-    if (!preview) return [];
-    if (!sortBy) return filteredRows;
-
-    const columnIndex = preview.columns.indexOf(sortBy);
-    if (columnIndex === -1) return filteredRows;
-
-    const sorted = [...filteredRows].sort((a, b) => {
-      const aValue = a[columnIndex] ?? "";
-      const bValue = b[columnIndex] ?? "";
-
-      const aNumber = Number(aValue);
-      const bNumber = Number(bValue);
-      const bothNumbers = !Number.isNaN(aNumber) && !Number.isNaN(bNumber);
-
-      if (bothNumbers) {
-        return sortDirection === "asc" ? aNumber - bNumber : bNumber - aNumber;
-      }
-
-      return sortDirection === "asc" ? String(aValue).localeCompare(String(bValue)) : String(bValue).localeCompare(String(aValue));
-    });
-
-    return sorted;
-  }, [filteredRows, preview, sortBy, sortDirection]);
-
-  const pageCount = Math.max(1, Math.ceil((sortedRows.length || 1) / pageSize));
+  const pageCount = Math.max(1, Math.ceil(serverTotalRows / pageSize));
   const currentPage = Math.min(page, pageCount);
-  const start = (currentPage - 1) * pageSize;
-  const pageRows = sortedRows.slice(start, start + pageSize);
+  const pageRows = preview?.rows ?? [];
 
   useEffect(() => {
     setPage((prev) => Math.min(prev, pageCount));
   }, [pageCount]);
-
-  const toggleSort = (column: string) => {
-    if (sortBy === column) {
-      setSortDirection((prevDir) => (prevDir === "asc" ? "desc" : "asc"));
-    } else {
-      setSortBy(column);
-      setSortDirection("asc");
-    }
-  };
 
   return {
     preview,
@@ -159,7 +170,14 @@ export function useCsvView({ apiBase }: UseCsvViewOptions) {
     setColumnFilter,
     sortBy,
     sortDirection,
-    toggleSort,
+    toggleSort: (column: string) => {
+      if (sortBy === column) {
+        setSortDirection((prevDir) => (prevDir === "asc" ? "desc" : "asc"));
+      } else {
+        setSortBy(column);
+        setSortDirection("asc");
+      }
+    },
     page,
     setPage,
     pageCount,
@@ -169,7 +187,6 @@ export function useCsvView({ apiBase }: UseCsvViewOptions) {
     setPageSize,
     filteredRows,
     uploadFile,
-    parseLocalFile,
     setError,
   };
 }

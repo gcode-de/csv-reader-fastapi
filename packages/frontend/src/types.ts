@@ -10,6 +10,7 @@ export type CsvPreview = {
 };
 
 export type UploadResponse = Partial<CsvPreview> & {
+  id?: string;
   columns: string[];
-  rows: string[][];
+  rows?: string[][];
 };
