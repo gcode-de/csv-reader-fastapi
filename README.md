@@ -109,14 +109,15 @@ Ungültige Zeilen (falsche Spaltenzahl) werden übersprungen und im `errors`-Arr
 
 - Beispiel: [packages/frontend/public/people.csv](packages/frontend/public/people.csv) (Semikolon-getrennt, enthält absichtlich fehlerhafte Zeilen zum Testen).
 
-## Improvement-Ideen
+## Improvement-Ideen (priorisiert)
 
-- ~~Pagination/Sortierung/Filter serverseitig~~ ✅ umgesetzt
-- ~~Suche serverseitig~~ ✅ umgesetzt (Query-Params + Debounce im Frontend)
-- Spaltenbreiten konstanter machen, wo sinnvoll
-- Drag & Drop-Ablegebereich für CSV-Dateien im Frontend
-- Design-Optimierungen und bessere Responsiveness
-- Backend: Persistente Speicherung statt In-Memory (z.B. Redis oder Datenbank)
-- Backend: Rate-Limiting und erweiterte Validierung
-- Frontend & Backend: Tests (Unit + Integration)
-- Loading-Indikator während Server-Pagination
+- (P1) E2E-/API-Smoke-Tests: Upload → Pagination → Suche/Filter (z.B. Playwright/Cypress) plus minimaler Backend-Testlauf.
+- (P1) Server-Härtung: Rate-Limiting, konsistente Fehlerpayloads (`{ error, details? }`), Logging (structured), Input-Validation vor Parsing.
+- (P1) Persistenz statt In-Memory (Redis oder SQLite) inkl. TTL-Cleanup, um Speicher zu schützen und Daten nicht zu verlieren.
+- (P1) Streaming-Parsing großer CSVs (z.B. `csv-parse`/Streams), um RAM zu reduzieren und früh invalidierte Zeilen abzuweisen.
+- (P1) Frontend-Resilienz: Skeleton/Spinner bei Pagination, Debounce + AbortController für Such-Requests, klarere Fehler-Badges.
+- (P2) Spaltenbreiten konstanter machen, wo sinnvoll
+- (P2) Drag & Drop-Ablegebereich für CSV-Dateien im Frontend
+- (P2) Design-Optimierungen und bessere Responsiveness
+- (P2) Loading-Indikator während Server-Pagination
+- (P2) Frontend & Backend: Unit-/Integration-Tests ergänzend zu den Smoke-Tests
