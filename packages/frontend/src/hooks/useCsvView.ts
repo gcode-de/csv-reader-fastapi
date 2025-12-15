@@ -26,6 +26,13 @@ export function useCsvView({ apiBase }: UseCsvViewOptions) {
     return () => clearTimeout(handle);
   }, [searchTerm]);
 
+  // Bei Sort-/Filter-/Suche-Änderungen auf Seite 1 springen
+  useEffect(() => {
+    if (page !== 1) {
+      setPage(1);
+    }
+  }, [sortBy, sortDirection, debouncedSearchTerm, columnFilter]);
+
   const uploadFile = async (file: File) => {
     setLoading(true);
     setError(null);
