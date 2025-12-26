@@ -1,16 +1,6 @@
 #!/bin/sh
 set -e
 
-echo "Starting CSV Viewer application..."
+echo "Starting CSV Viewer FastAPI backend on port 3001..."
 
-# Start the backend server
-echo "Starting backend server on port 3000..."
-cd /app/backend
-node dist/index.js &
-BACKEND_PID=$!
-
-# Wait for the application to start
-sleep 2
-
-# Keep the container running
-wait $BACKEND_PID
+exec /app/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 3001

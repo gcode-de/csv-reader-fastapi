@@ -1,84 +1,80 @@
-name: Build and Push Docker Image 2
+name: Docker Build & Push (backend/frontend)
 
 on:
   push:
-    branches:
-      - main
-      - develop
-    paths-ignore:
-      - "README.md"
-      - "Aufgabenstellung/**"
-  pull_request:
-    branches:
-      - main
-      - develop
+    branches: ["main", "dev"]
   workflow_dispatch:
 
 env:
-  REGISTRY: docker.io
-  IMAGE_NAME: ${{ secrets.DOCKER_USERNAME }}/csv-reader
+  # DockerHub repository in the form "namespace/repo" e.g. "yourname/csv-viewer"
+  DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_REPO }}
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: backend
+            context: .
+            dockerfile: Dockerfile
+            tagSuffix: backend
+          - component: frontend
+            context: packages/frontend
+            dockerfile: packages/frontend/Dockerfile
+            tagSuffix: frontend
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
+      - name: Sanity check build context (backend/frontend assets)
+        run: |
+          echo "Component: ${{ matrix.component }}" && pwd
+          ls -la .
+          if [ "${{ matrix.component }}" = "backend" ]; then
+            ls -la packages/backend || true
+            ls -la packages/backend/app || true
+            test -f packages/backend/requirements.txt
+            test -f docker-entrypoint.sh
+          else
+            ls -la packages/frontend || true
+            ls -la packages/frontend/src || true
+            test -f packages/frontend/Dockerfile
+          fi
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
-        if: github.event_name != 'pull_request'
+      - name: Login to DockerHub (main only)
+        if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_USERNAME }}
+          username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
+      - name: Build and conditional push (${{ matrix.component }})
+        uses: docker/build-push-action@v6
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64
+          push: ${{ github.ref == 'refs/heads/main' }}
           tags: |
-            type=ref,event=branch
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=long
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+            ${{ env.DOCKERHUB_REPO }}:${{ matrix.tagSuffix }}-latest
+            ${{ env.DOCKERHUB_REPO }}:${{ matrix.tagSuffix }}-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Docker Hub Description
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: peter-evans/dockerhub-description@v4
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-          repository: ${{ env.IMAGE_NAME }}
-          short-description: CSV Viewer Application - Full-stack Monorepo
-          description: |
-            A full-stack CSV viewer application built with React/TypeScript frontend and Express backend.
-
-            **Features:**
-            - CSV file upload and parsing
-            - Data visualization and filtering
-            - RESTful API backend
-            - Responsive React frontend
-
-            **Running the container:**
-            ```
-            docker run -p 3000:3000 -p 5000:5000 ${{ secrets.DOCKER_USERNAME }}/csv-reader:latest
-            ```
+      - name: Summary
+        run: |
+          echo "Component: ${{ matrix.component }}" >> $GITHUB_STEP_SUMMARY
+          echo "Branch: ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "Pushed: ${{ github.ref == 'refs/heads/main' }}" >> $GITHUB_STEP_SUMMARY
+          echo "Image tags:" >> $GITHUB_STEP_SUMMARY
+          echo "  ${{ env.DOCKERHUB_REPO }}:${{ matrix.tagSuffix }}-latest" >> $GITHUB_STEP_SUMMARY
+          echo "  ${{ env.DOCKERHUB_REPO }}:${{ matrix.tagSuffix }}-${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
