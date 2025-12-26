@@ -22,12 +22,27 @@ jobs:
             tagSuffix: backend
           - component: frontend
             context: packages/frontend
-            dockerfile: Dockerfile
+            dockerfile: packages/frontend/Dockerfile
             tagSuffix: frontend
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Sanity check build context (backend/frontend assets)
+        run: |
+          echo "Component: ${{ matrix.component }}" && pwd
+          ls -la .
+          if [ "${{ matrix.component }}" = "backend" ]; then
+            ls -la packages/backend || true
+            ls -la packages/backend/app || true
+            test -f packages/backend/requirements.txt
+            test -f docker-entrypoint.sh
+          else
+            ls -la packages/frontend || true
+            ls -la packages/frontend/src || true
+            test -f packages/frontend/Dockerfile
+          fi
 
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v3
@@ -40,7 +55,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USER }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and conditional push (${{ matrix.component }})
         uses: docker/build-push-action@v6

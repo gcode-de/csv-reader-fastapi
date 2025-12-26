@@ -3,7 +3,7 @@ Probeaufgabe Anacision – CSV Viewer
 ## Struktur
 
 - [packages/frontend](packages/frontend): React + Vite CSV-Viewer mit Upload, Vorschau und Fehlerindikatoren
-- [packages/backend](packages/backend): Express REST-API für CSV-Upload und -Parsing
+- [packages/backend](packages/backend): FastAPI (Python) REST-API für CSV-Upload und -Parsing
 
 ## Setup
 
@@ -14,12 +14,7 @@ npm install
 npm run dev
 
 # Backend starten (Port 3001)
-npm run dev:backend
-
-# Beide gleichzeitig starten
-npm run dev:all
-
-# Alles bauen
+# Frontend bauen
 npm run build
 
 # ESLint
@@ -37,10 +32,7 @@ Das Backend läuft auf Port 3001 und bietet folgende Endpunkte:
 - `POST /api/upload` – CSV-Upload mit ID-basierter Speicherung (multipart/form-data, Feld: `file`)
 - `GET /api/data/:id` – Paginierte, sortierte und gefilterte Daten abrufen
 
-```bash
-cd packages/backend
-npm run dev
-```
+Das Backend läuft als FastAPI-App und kann lokal via `uvicorn` gestartet werden oder als Docker-Container über `docker compose`.
 
 Das Backend parst hochgeladene CSV-Dateien, erkennt den Delimiter automatisch (Semikolon bevorzugt), speichert die Daten in einem In-Memory-Store (TTL 1h) und liefert Metadaten samt Fehlern zu ungültigen Zeilen zurück.
 
