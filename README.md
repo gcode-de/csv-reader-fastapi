@@ -5,24 +5,51 @@ Probeaufgabe Anacision – CSV Viewer
 - [packages/frontend](packages/frontend): React + Vite CSV-Viewer mit Upload, Vorschau und Fehlerindikatoren
 - [packages/backend](packages/backend): FastAPI (Python) REST-API für CSV-Upload und -Parsing
 
-## Setup
+## Setup & Entwicklung
+
+### Schnellstart mit Docker Compose (empfohlen)
+
+```bash
+# Images bauen und beide Services starten
+docker compose build
+docker compose up -d
+
+# Frontend: http://localhost:3000
+# Backend API: http://localhost:3001/api/health
+```
+
+### Lokale Entwicklung (Frontend + Backend separat)
+
+**Frontend:**
 
 ```bash
 npm install
+npm run dev      # Vite dev-server auf Port 5173
+npm run build    # Produktions-Build
+npm run lint     # ESLint
+npm run preview  # Lokaler Preview
+```
 
-# Frontend starten (Port 5173)
-npm run dev
+**Backend (Python):**
+
+Voraussetzung: Python 3.13+
+
+```bash
+# Abhängigkeiten installieren (virtuelle Umgebung)
+cd packages/backend
+python -m venv .venv
+source .venv/bin/activate  # Linux/macOS
+# oder
+.venv\Scripts\activate     # Windows
+
+# Abhängigkeiten installieren
+pip install -r requirements.txt
 
 # Backend starten (Port 3001)
-# Frontend bauen
-npm run build
-
-# ESLint
-npm run lint
-
-# Produktionsbuild lokal ansehen
-npm run preview
+python -m uvicorn app.main:app --host 0.0.0.0 --port 3001 --reload
 ```
+
+Das Frontend läuft auf Port 5173 und nutzt einen Proxy zu `http://localhost:3001` (konfiguriert in `vite.config.ts`).
 
 ## Backend
 
@@ -35,6 +62,13 @@ Das Backend läuft auf Port 3001 und bietet folgende Endpunkte:
 Das Backend läuft als FastAPI-App und kann lokal via `uvicorn` gestartet werden oder als Docker-Container über `docker compose`.
 
 Das Backend parst hochgeladene CSV-Dateien, erkennt den Delimiter automatisch (Semikolon bevorzugt), speichert die Daten in einem In-Memory-Store (TTL 1h) und liefert Metadaten samt Fehlern zu ungültigen Zeilen zurück.
+
+### Technologie
+
+- **Framework**: FastAPI mit Pydantic für Request/Response-Validierung
+- **Server**: Uvicorn (ASGI-Server)
+- **Speicher**: In-Memory-Store mit 1h TTL (für Produktionsbetrieb auf Persistierung upgraden)
+- **CSV-Parsing**: Custom-Parser mit Quote-Handling und Delimiter-Erkennung
 
 ### API-Endpunkte im Detail
 
@@ -96,6 +130,57 @@ Nur **Remote-Modus**: Nach dem Upload wird eine ID vergeben, alle Operationen (P
 ### Fehlerbehandlung
 
 Ungültige Zeilen (falsche Spaltenzahl) werden übersprungen und im `errors`-Array dokumentiert (bis zu 10 Fehler werden zurückgegeben). Das Frontend zeigt diese Hinweise unterhalb der Tabelle an.
+
+## Demo-Daten
+
+- Beispiel: [packages/frontend/public/people.csv](packages/frontend/public/people.csv) (Semikolon-getrennt, enthält absichtlich fehlerhafte Zeilen zum Testen).
+
+## Docker & Deployment
+
+### Docker Compose (Lokal)
+
+Beide Services (Frontend und Backend) werden zusammen gestartet:
+
+```bash
+docker compose build      # Baue beide Images
+docker compose up -d      # Starte im Hintergrund
+docker compose logs -f    # Logs anschauen
+docker compose down       # Herunterfahren
+```
+
+- **Frontend**: http://localhost:3000 (Nginx mit SPA-Fallback)
+- **Backend**: http://localhost:3001 (FastAPI)
+
+### Individual Docker Images
+
+Für separate Deployments:
+
+**Backend:**
+
+```bash
+docker build -f Dockerfile . -t csv-viewer-backend:latest
+docker run -p 3001:3001 csv-viewer-backend:latest
+```
+
+**Frontend:**
+
+```bash
+docker build -f packages/frontend/Dockerfile packages/frontend -t csv-viewer-frontend:latest
+docker run -p 3000:80 csv-viewer-frontend:latest
+```
+
+### CI/CD (GitHub Actions)
+
+Automatische Builds und Pushes zu DockerHub:
+
+- **Branch `dev`**: Build ohne Push (Test-Images in der Cache)
+- **Branch `main`**: Build + Push zu `${DOCKERHUB_REPO}:backend-latest`, `backend-${SHA}`, `frontend-latest`, `frontend-${SHA}`
+
+Secrets erforderlich:
+
+- `DOCKER_USER`: DockerHub Benutzername
+- `DOCKER_PASSWORD`: DockerHub Access Token
+- `DOCKERHUB_REPO`: Ziel-Repository (z. B. `yourname/csv-viewer`)
 
 ## Demo-Daten
 
